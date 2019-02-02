@@ -43,12 +43,13 @@ else:
     pickle_in = open('kmeans.pickle', 'rb')
     kmeans = pickle.load(pickle_in)
 
-# Get all the descriptors in the same cluster and average them
-codewords = np.zeros((num_clusters,128))
-for n in range(0, max(kmeans.labels_)):
-    cluster = np.where(kmeans.labels_==n)
-    for i in range(0,128):
-        codewords[n,i] = np.mean(descriptors[cluster[0],i])
+# # Get all the descriptors in the same cluster and average them
+# codewords = np.zeros((num_clusters,128))
+# for n in range(0, max(kmeans.labels_)):
+#     cluster = np.where(kmeans.labels_==n)
+#     for i in range(0,128):
+#         codewords[n,i] = np.mean(descriptors[cluster[0],i])
+codewords = kmeans.cluster_centers_.copy()
 
 patch_size = (20,20)
 
@@ -75,7 +76,7 @@ for c in classes:
         image_name = image_name + str(idx) + '.jpg'
         img = cv2.imread('RF_2019/Caltech_101/101_ObjectCategories/' + c + '/' + image_name, cv2.IMREAD_GRAYSCALE)
         patches = extract_patches_2d(img, patch_size, max_patches=50)
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
 
 
