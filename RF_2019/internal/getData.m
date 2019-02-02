@@ -127,7 +127,6 @@ switch MODE
         disp('Building visual codebook...')
         % Build visual vocabulary (codebook) for 'Bag-of-Words method'
         desc_sel = single(vl_colsubset(cat(2,desc_tr{:}), 10e4)); % Randomly select 100k SIFT descriptors for clustering
-        csvwrite(filename, desc_sel);
         % K-means clustering
         numBins = 256; % for instance,
         
