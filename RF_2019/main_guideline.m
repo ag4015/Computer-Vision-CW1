@@ -257,4 +257,4 @@ param.split = 'IG'; % Currently support 'information gain' only
 % vocabulary and the bag-of-words histograms for both training and testing data. 
 % You can use any existing code for K-means (note different codes require different memory and computation time).
 
-[data_train, data_test] = getData('Caltech', 'desc_sel.csv', imshow);
+[data_train, data_test] = getData('Caltech', 'desc_sel.csv');

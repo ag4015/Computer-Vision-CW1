@@ -91,12 +91,15 @@ switch MODE
             figure('Units','normalized','Position',[.05 .1 .4 .9]);
             suptitle('Training image samples');
         end
+        count = 1;
         for c = 1:length(classList)
             subFolderName = fullfile(folderName,classList{c});
             imgList = dir(fullfile(subFolderName,'*.jpg'));
             imgIdx{c} = randperm(length(imgList));
             imgIdx_tr = imgIdx{c}(1:imgSel(1));
+            imgIdx_tr_csv{c} = imgIdx_tr;
             imgIdx_te = imgIdx{c}(imgSel(1)+1:sum(imgSel));
+            imgIdx_te_csv{c} = imgIdx_te;
             
             for i = 1:length(imgIdx_tr)
                 I = imread(fullfile(subFolderName,imgList(imgIdx_tr(i)).name));
@@ -114,7 +117,10 @@ switch MODE
                 end
                 
                 % For details of image description, see http://www.vlfeat.org/matlab/vl_phow.html
+                
                 [~, desc_tr{c,i}] = vl_phow(single(I),'Sizes',PHOW_Sizes,'Step',PHOW_Step); %  extracts PHOW features (multi-scaled Dense SIFT)
+                desc_sizes(count) = size(desc_tr{c,i},2);
+                count = count + 1;
             end
         end
         
