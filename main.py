@@ -6,8 +6,13 @@ import numpy as np
 import csv
 import pickle
 
-desc_filename = str(sys.argv[1])
-get_descriptors = int(sys.argv[2])
+if len(sys.argv) > 1:  
+    desc_filename = str(sys.argv[1])
+    get_descriptors = int(sys.argv[2])
+else:  #if no arguments were given (too lazy), use the following ones
+    desc_filename = 'desc_sel.csv'
+    get_descriptors = 0
+
 
 # Get data descriptors from Caltech using MATLAB
 if get_descriptors:
@@ -16,7 +21,7 @@ if get_descriptors:
 # Load descriptors from csv into python variable
 with open(str("RF_2019/" + desc_filename), 'rt') as csvfile:
     descriptors = np.zeros((100000,128)) 
-    csv.field_size_limit(sys.maxsize)
+    csv.field_size_limit(150000)
     f = csv.reader(csvfile, delimiter=',')
     i = 0
     for row in f:
