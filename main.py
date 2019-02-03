@@ -6,32 +6,40 @@ from sklearn import cluster
 import numpy as np
 import csv
 import pickle
-from PIL import Image
+import scipy.io
+import matplotlib.pyplot as plt
 
-desc_filename = str(sys.argv[1])
-get_descriptors = int(sys.argv[2])
-
-# Get data descriptors from Caltech using MATLAB
-if get_descriptors:
-    os.system("cd RF_2019; matlab -nodesktop -nosplash -r \"run(\'init.m\');clc;get_descriptors(\'CalTech\', \'" + desc_filename + "\', 0);exit;\"")
-
-# Load descriptors from csv into python variable
-with open(str("RF_2019/" + desc_filename), 'rt') as csvfile:
-    descriptors = np.zeros((100000,128)) 
-    csv.field_size_limit(sys.maxsize)
-    f = csv.reader(csvfile, delimiter=',')
-    i = 0
-    for row in f:
-        descriptors[:, i] = row  
-        i = i + 1
+def bag_of_words_histogram(desc, kmeans):
+    #this function creates all bags of words for the entire input set (either training or test set)
+    bags_of_words = []
+    for class_row in desc:
+        class_histogram = []
+        for image_descriptors in class_row:
+            descriptors_nearest_clusters = kmeans.predict(image_descriptors.T)
+            histogram = np.bincount(descriptors_nearest_clusters)
+            class_histogram.append(histogram)
+        bags_of_words.append(class_histogram)
+    return np.array(bags_of_words) #converts list of lists into a numpy array
 
 
-num_clusters = 256
+#load variables from matlab data
+desc_tr = scipy.io.loadmat('matlab_data/desc_tr.mat')['desc_tr']
+desc_sel = scipy.io.loadmat('matlab_data/desc_sel.mat')['desc_sel'].T
+desc_te = scipy.io.loadmat('matlab_data/desc_te.mat')['desc_te'].T
+imgIdx = scipy.io.loadmat('matlab_data/imgIdx.mat')['imgIdx'].T
+imgIdx_tr = scipy.io.loadmat('matlab_data/imgIdx_tr.mat')['imgIdx_tr'].T
+imgIdx_te = scipy.io.loadmat('matlab_data/imgIdx_te.mat')['imgIdx_te'].T
+
+if len(sys.argv) > 1:  
+    compute_kmeans = int(sys.argv[1])
+else:  #if no arguments were given (too lazy), use the following ones
+    compute_kmeans = 0
 
 
-if get_descriptors:
+if compute_kmeans:
     print('Computing K-Means...')
-    kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(descriptors)
+    num_clusters = 256
+    kmeans = KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(desc_sel)
     pickle_out = open('kmeans.pickle', 'wb')
     pickle.dump(kmeans,pickle_out) 
     pickle_out.close()
@@ -39,59 +47,20 @@ else:
     pickle_in = open('kmeans.pickle', 'rb')
     kmeans = pickle.load(pickle_in)
 
-# Get all the descriptors in the same cluster and average them
-codewords = np.zeros((num_clusters,128))
-for n in range(0, max(kmeans.labels_)):
-    selected_cluster = np.where(kmeans.labels_==n)
-    for i in range(0,128):
-        codewords[n,i] = np.mean(descriptors[selected_cluster[0],i])
+codewords = kmeans.cluster_centers_.copy()
 
-patch_size = (32, 32)
+#classes = ['tick', 'trilobite', 'umbrella', 'watch', 'water_lilly', 'wheelchair', 'wild_cat', 'windsor_chair', 'wrench', 'yin_yang']
 
-classes = ['tick', 'trilobite', 'umbrella', 'watch', 'water_lilly', 'wheelchair', 'wild_cat', 'windsor_chair', 'wrench', 'yin_yang']
+data_train = bag_of_words_histogram(desc_tr, kmeans)
+data_test = bag_of_words_histogram(desc_te, kmeans)
 
-# Build a bag of words feature vector for all the images in the training set
-for c in classes:
+#data_train contains the bags of words of the entire training set
+#data_test contains the bags of words of the entire test set
 
-    # Open csv file containing indexes of training images in the class
-    with open("RF_2019/imgIdx/" + c + '_tr_idx.csv', 'rt') as csvfile:
-        imgIdx_tr = []
-        f = csv.reader(csvfile, delimiter=',')
-        for row in f:
-            imgIdx_tr.append(row)
-    # Go through all the training images in the class
-    for idx in imgIdx_tr[0]:
-        # Calculate the name of the image based on the index file
-        idx = int(idx)
-        image_name = 'image_0'
-        if idx < 100:
-            image_name = image_name + '0'
-        if idx < 10:
-            image_name = image_name + '0'
-        image_name = image_name + str(idx) + '.jpg'
-        img = cv2.imread('RF_2019/Caltech_101/101_ObjectCategories/' + c + '/' + image_name, cv2.IMREAD_GRAYSCALE)
-        
-        # Vector quantization
-        n_clusters = 5
-        original_shape = img.shape
-        img = img.reshape(-1,1)
-        kmeans2 = cluster.KMeans(n_clusters=n_clusters, n_init=4)
-        kmeans2.fit(img)
-        values = kmeans2.cluster_centers_.squeeze()
-        labels = kmeans2.labels_
-        compressed_image = np.choose(labels, values)
-        compressed_image.shape = img.shape
-        img = compressed_image.reshape(original_shape)
-        import pdb; pdb.set_trace()
-        img = Image.fromarray(np.uint8(img) , 'L')
-        img.show()
-        patches = extract_patches_2d(img, patch_size, max_patches=50)
-        img = Image.fromarray(np.uint8(patches[0]) , 'L')
-        img.show()
+#all code up to here is what would be in the getData.m file 
 
+#an example of a training set image histogram would be
+plt.plot(data_train[8][6]) #training image class 9 image 7
+plt.show()
 
-
-
-
-
-
+print("done")
