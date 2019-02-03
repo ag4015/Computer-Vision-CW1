@@ -1,11 +1,12 @@
 import os
 import sys
-from sklearn.cluster import KMeans
 import cv2
 from sklearn.feature_extraction.image import extract_patches_2d
+from sklearn import cluster
 import numpy as np
 import csv
 import pickle
+from PIL import Image
 
 desc_filename = str(sys.argv[1])
 get_descriptors = int(sys.argv[2])
@@ -30,7 +31,7 @@ num_clusters = 256
 
 if get_descriptors:
     print('Computing K-Means...')
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(descriptors)
+    kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(descriptors)
     pickle_out = open('kmeans.pickle', 'wb')
     pickle.dump(kmeans,pickle_out) 
     pickle_out.close()
@@ -41,11 +42,11 @@ else:
 # Get all the descriptors in the same cluster and average them
 codewords = np.zeros((num_clusters,128))
 for n in range(0, max(kmeans.labels_)):
-    cluster = np.where(kmeans.labels_==n)
+    selected_cluster = np.where(kmeans.labels_==n)
     for i in range(0,128):
-        codewords[n,i] = np.mean(descriptors[cluster[0],i])
+        codewords[n,i] = np.mean(descriptors[selected_cluster[0],i])
 
-patch_size = (20,20)
+patch_size = (32, 32)
 
 classes = ['tick', 'trilobite', 'umbrella', 'watch', 'water_lilly', 'wheelchair', 'wild_cat', 'windsor_chair', 'wrench', 'yin_yang']
 
@@ -69,8 +70,24 @@ for c in classes:
             image_name = image_name + '0'
         image_name = image_name + str(idx) + '.jpg'
         img = cv2.imread('RF_2019/Caltech_101/101_ObjectCategories/' + c + '/' + image_name, cv2.IMREAD_GRAYSCALE)
-        patches = extract_patches_2d(img, patch_size, max_patches=50)
+        
+        # Vector quantization
+        n_clusters = 5
+        original_shape = img.shape
+        img = img.reshape(-1,1)
+        kmeans2 = cluster.KMeans(n_clusters=n_clusters, n_init=4)
+        kmeans2.fit(img)
+        values = kmeans2.cluster_centers_.squeeze()
+        labels = kmeans2.labels_
+        compressed_image = np.choose(labels, values)
+        compressed_image.shape = img.shape
+        img = compressed_image.reshape(original_shape)
         import pdb; pdb.set_trace()
+        img = Image.fromarray(np.uint8(img) , 'L')
+        img.show()
+        patches = extract_patches_2d(img, patch_size, max_patches=50)
+        img = Image.fromarray(np.uint8(patches[0]) , 'L')
+        img.show()
 
 
 
