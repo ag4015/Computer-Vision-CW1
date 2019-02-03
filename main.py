@@ -1,11 +1,10 @@
 import os
 import sys
 import cv2
-from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn import cluster
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
 import numpy as np
-import csv
 import pickle
 import scipy.io
 import matplotlib.pyplot as plt
@@ -22,6 +21,12 @@ def bag_of_words_histogram(desc, kmeans):
         bags_of_words.append(class_histogram)
     return np.array(bags_of_words) #converts list of lists into a numpy array
 
+def print_all_CV_scores(clf):
+    for (params, score, mean_fit_time, mean_score_time) in zip(clf.cv_results_['params'], clf.cv_results_['mean_test_score'], clf.cv_results_['mean_fit_time'], clf.cv_results_['mean_score_time']):
+        print('params:', params,
+            ' score:', score,
+            ' mean_fit_time:', mean_fit_time,  #given in seconds
+            ' mean_score_time:', mean_score_time)  #given in seconds
 
 #load variables from matlab data
 desc_tr = scipy.io.loadmat('matlab_data/desc_tr.mat')['desc_tr']
@@ -68,18 +73,24 @@ print("done")
 
 # Construct training data labels
 train_labels = [i//15 for i in range(150)]
+test_labels = train_labels #in this case, since both are 10x15 images
 
 # Flatten out train and test data (preparing them for RF classifier)
 training_data = data_train.reshape(150, 256)
 test_data = data_test.reshape(150, 256)
 
-clf = RandomForestClassifier(n_estimators=10, max_depth=5,random_state=0)
+
+RFC = RandomForestClassifier(n_estimators=100, max_depth=5,random_state=0)
+parameters = {'n_estimators':[10, 100], 'max_depth':[5, 10, 20]}
+clf = GridSearchCV(RFC, param_grid=parameters, cv=3, return_train_score=False)
 clf.fit(training_data, train_labels)
 predictions = clf.predict(test_data)
-
 reshaped_preds = predictions.reshape(10, 15)
 print(reshaped_preds)
+
+print('score:', clf.score(test_data, test_labels))
+
+#print scores and times for all parameters tested
+print_all_CV_scores(clf)
+
 print("done")
-
-
-
