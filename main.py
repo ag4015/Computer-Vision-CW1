@@ -1,11 +1,10 @@
 import os
 import sys
 import cv2
-from sklearn.feature_extraction.image import extract_patches_2d
 from sklearn import cluster
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
 import numpy as np
-import csv
 import pickle
 import scipy.io
 import matplotlib.pyplot as plt
@@ -17,18 +16,22 @@ def bag_of_words_histogram(desc, kmeans):
         class_histogram = []
         for image_descriptors in class_row:
             descriptors_nearest_clusters = kmeans.predict(image_descriptors.T)
-            histogram = np.bincount(descriptors_nearest_clusters)
-            if len(histogram) < 256:
-                print(len(histogram))
+            histogram = np.bincount(descriptors_nearest_clusters, minlength=256)
             class_histogram.append(histogram)
         bags_of_words.append(class_histogram)
     return np.array(bags_of_words) #converts list of lists into a numpy array
 
+def print_all_CV_scores(clf):
+    for (params, score, mean_fit_time, mean_score_time) in zip(clf.cv_results_['params'], clf.cv_results_['mean_test_score'], clf.cv_results_['mean_fit_time'], clf.cv_results_['mean_score_time']):
+        print('params:', params,
+            ' score:', score,
+            ' mean_fit_time:', mean_fit_time,  #given in seconds
+            ' mean_score_time:', mean_score_time)  #given in seconds
 
 #load variables from matlab data
 desc_tr = scipy.io.loadmat('matlab_data/desc_tr.mat')['desc_tr']
 desc_sel = scipy.io.loadmat('matlab_data/desc_sel.mat')['desc_sel'].T
-desc_te = scipy.io.loadmat('matlab_data/desc_te.mat')['desc_te'].T
+desc_te = scipy.io.loadmat('matlab_data/desc_te.mat')['desc_te']
 imgIdx = scipy.io.loadmat('matlab_data/imgIdx.mat')['imgIdx'].T
 imgIdx_tr = scipy.io.loadmat('matlab_data/imgIdx_tr.mat')['imgIdx_tr'].T
 imgIdx_te = scipy.io.loadmat('matlab_data/imgIdx_te.mat')['imgIdx_te'].T
@@ -42,7 +45,7 @@ else:  #if no arguments were given (too lazy), use the following ones
 if compute_kmeans:
     print('Computing K-Means...')
     num_clusters = 256
-    kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(desc_sel)
+    kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = -1).fit(desc_sel)
     pickle_out = open('kmeans.pickle', 'wb')
     pickle.dump(kmeans,pickle_out) 
     pickle_out.close()
@@ -68,27 +71,26 @@ data_test = bag_of_words_histogram(desc_te, kmeans)
 
 print("done")
 
-# Construct the lables from the training data 1 lable == 1 class
-train_lables = np.zeros(15)
-training_data = np.zeros((10*15,256))
-for n in range(1,10):
-    train_lables = np.r_[train_lables, n*np.ones(15)]
+# Construct training data labels
+train_labels = [i//15 for i in range(150)]
+test_labels = train_labels #in this case, since both are 10x15 images
 
-# Format train_data
-for i in range(0,10):
-    try:
-        for n in range(0,15):
-            training_data[i*15+n] = data_train[i][n]
-    except Exception:
-        print(i,n)
+# Flatten out train and test data (preparing them for RF classifier)
+training_data = data_train.reshape(150, 256)
+test_data = data_test.reshape(150, 256)
 
 
-import pdb; pdb.set_trace()
+RFC = RandomForestClassifier(n_estimators=100, max_depth=5,random_state=0)
+parameters = {'n_estimators':[10, 100], 'max_depth':[5, 10, 20]}
+clf = GridSearchCV(RFC, param_grid=parameters, cv=3, return_train_score=False)
+clf.fit(training_data, train_labels)
+predictions = clf.predict(test_data)
+reshaped_preds = predictions.reshape(10, 15)
+print(reshaped_preds)
 
-clf = RandomForestClassifier(n_estimators=10, max_depth=5,random_state=0)
-clf.fit(data_train, train_lables)
+print('score:', clf.score(test_data, test_labels))
 
+#print scores and times for all parameters tested
+print_all_CV_scores(clf)
 
-
-
-
+print("done")
