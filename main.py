@@ -10,6 +10,8 @@ import scipy.io
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
+import time
+from scipy.interpolate import make_interp_spline, BSpline
 
 def bag_of_words_histogram(desc, kmeans, num_clusters):
     #this function creates all bags of words for the entire input set (either training or test set)
@@ -50,6 +52,18 @@ def kmeans_codebook(desc_sel, num_clusters, compute):
     
     return histogram_train, histogram_test
 
+def pickle_save(x, file_name):
+    pickle_out = open(file_name, 'wb')
+    pickle.dump(x, pickle_out)
+    pickle_out.close()
+
+def pickle_load(file_name):
+    pickle_in = open(file_name, 'rb')
+    x = pickle.load(pickle_in)
+    pickle_in.close()
+    return x
+
+
 def print_all_CV_scores(clf):
     for (params, score, mean_fit_time, mean_score_time) in zip(clf.cv_results_['params'], clf.cv_results_['mean_test_score'], clf.cv_results_['mean_fit_time'], clf.cv_results_['mean_score_time']):
         print('params:', params,
@@ -58,23 +72,25 @@ def print_all_CV_scores(clf):
             ' mean_score_time:', mean_score_time)  #given in seconds
 
 def test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels):
-    X = [] #param1, max_depth
-    Y = [] #param2, max_features
+    X = [] #param1,
+    Y = [] #param2
     Z = [] #accuracy scores
+    all_times = [] #train and test time
     for n_estimators in parameters['n_estimators']:
         for max_depth in parameters['max_depth']:
             for max_features in parameters['max_features']:
                 RFC = ExtraTreesClassifier(n_estimators=n_estimators, criterion= 'entropy', bootstrap=False, max_features=max_features, max_depth=max_depth, random_state=0)
-                preds, score, RFC_fit = fit_and_predict(RFC, training_data, train_labels, test_data, test_labels)
+                preds, score, RFC_fit, time_list = fit_and_predict(RFC, training_data, train_labels, test_data, test_labels)
                 X.append(max_depth)
                 Y.append(n_estimators)
                 Z.append(score)
                 print('params: ', 'n_estimators:', n_estimators, 'max_depth', max_depth, 'max_features', max_features, ' score:', score)
+                all_times.append(time_list)
     max_scores_indices = np.argsort(Z)[-6:-1]
     print('max scores:')
     for index in max_scores_indices:
         print(X[index], Y[index], Z[index])
-    return X, Y, Z
+    return X, Y, Z, np.array(all_times)
 
 def test_vocabulary(desc_sel, desc_tr, desc_te):
     vocabulary_sizes = [50,100,200,300,400]
@@ -132,7 +148,7 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
         histogram_train = np.bincount(prediction_train, minlength=150)
         histogram_test = np.bincount(prediction_test, minlength=150)
         pickle_out = open('rf_codebook.pickle', 'wb')
-        pickle.dump([RFC,histogram_train, histogram_test],pickle_out) 
+        pickle.dump([RFC,histogram_train, histogram_test],pickle_out)
         pickle_out.close()
     else:
         pickle_in = open('rf_codebook.pickle', 'rb')
@@ -146,12 +162,39 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
     
 def fit_and_predict(clf, training_data, train_labels, test_data, test_labels):
     #works for both GridSearchCV and ExtraTreesClassifier
+    start = time.time()
     clf.fit(training_data, train_labels)
+    fit_time = time.time() - start
     #predictions = clf.predict(test_data)
     reshaped_preds = 0
     #reshaped_preds = predictions.reshape(10, 15)
+    start = time.time()
     score = clf.score(test_data, test_labels)
-    return reshaped_preds, score, clf
+    test_time = time.time() - start
+    return reshaped_preds, score, clf, [fit_time, test_time]
+
+def do_bsplines(var1, var2, num_points):
+    spl = make_interp_spline(var1, var2, k=3)
+    xnew = np.linspace(var1.min(), var1.max(), num_points) #new x axis
+    return spl, xnew
+
+def plot_acc_times(num_trees, accuracy, train_times, test_times):
+    fig, ax1 = plt.subplots()
+    ax1.plot(num_trees, accuracy, color='b')
+    ax1.set_xlabel('depth of trees')
+    ax1.set_ylabel('accuracy (%)')
+    #yticks = [35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
+    yticks = [60, 65, 70, 75, 80]
+    ax1.set_yticks(yticks)
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    ax2.plot(num_trees, train_times, color='r')
+    ax2.plot(num_trees, test_times, color='g')
+    ax2.set_ylabel('time (s)')
+    ax2.legend(['train time', 'test time'], loc=1)
+    ax1.legend(['accuracy (%)'], loc=2)
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    plt.savefig('acc_depth_trees.png', bbox_inches='tight', dpi=300)
+    plt.show()
 
 def plot_3d(X, Y, Z):
     fig = plt.figure()
@@ -170,6 +213,11 @@ def plot_3d(X, Y, Z):
     ax.view_init(elev=30, azim=-110)
     plt.savefig('3dplot.png', bbox_inches='tight', dpi=300)
     plt.show()
+
+
+
+
+
 
 #load variables from matlab data
 desc_tr = scipy.io.loadmat('matlab_data/desc_tr.mat')['desc_tr']
@@ -227,14 +275,33 @@ test_data = data_test.reshape(150, num_clusters)
 num_clusters = 256
 max_features = num_clusters #max_features controls the randomness parameter (assuming bootstrap=False)
 
-parameters = {'n_estimators':[10, 100, 1000], 'max_depth':[3, 5, 10, 20], 'max_features':[256]}
+parameters = {'n_estimators':[100], 'max_depth':[5], 'max_features':[10]}
 #clf = GridSearchCV(RFC, param_grid=parameters, cv=5, return_train_score=False)
 
-parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
-parameters['n_estimators'] = np.linspace(1, 500, num=10, dtype=int)
+#parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
+parameters['max_depth'] = np.linspace(1, 40, num=40, dtype=int)
 
-X, Y, Z = test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels) #using for loops on test data
-plot_3d(X, Y, Z)
+X, Y, Z, all_times = test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels) #using for loops on test data
+#plot_3d(X, Y, Z)
+
+pickle_save([X, Y, Z, all_times], 'tree_depth_time.pickle')
+
+vars_list = pickle_load('tree_depth_time.pickle')
+
+vars_list[0] = np.array(vars_list[0])
+
+spl_acc, xnew = do_bsplines(vars_list[0], vars_list[2], 80)
+spl_tr, xnew = do_bsplines(vars_list[0], vars_list[3][:,0], 80)
+spl_te, xnew = do_bsplines(vars_list[0], vars_list[3][:,1], 80)
+
+plot_acc_times(xnew, 100*np.array(spl_acc(xnew)), spl_tr(xnew), spl_te(xnew))
+#plot_acc_times(vars_list[0], 100*np.array(vars_list[2]), vars_list[3][:,0], vars_list[3][:,1])
+
+print(vars_list[3][:,1])
+print(spl_te(xnew))
+print(all_times)
+print('train times:', all_times[:,0])
+print('test times:', all_times[:,1])
 
 #print scores and times for all parameters tested
 #print_all_CV_scores(clf)
