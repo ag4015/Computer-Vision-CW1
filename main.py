@@ -64,7 +64,7 @@ def test_RF_classifier_params(parameters, training_data, train_labels, test_data
     for n_estimators in parameters['n_estimators']:
         for max_depth in parameters['max_depth']:
             for max_features in parameters['max_features']:
-                RFC = ExtraTreesClassifier(n_estimators=n_estimators, criterion= 'entropy', bootstrap=True, max_features=max_features, max_depth=max_depth, random_state=0)
+                RFC = ExtraTreesClassifier(n_estimators=n_estimators, criterion= 'entropy', bootstrap=False, max_features=max_features, max_depth=max_depth, random_state=0)
                 preds, score, RFC_fit = fit_and_predict(RFC, training_data, train_labels, test_data, test_labels)
                 X.append(max_depth)
                 Y.append(n_estimators)
