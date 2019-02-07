@@ -91,7 +91,7 @@ def load_or_compute_pickle(num_clusters):
     if os.path.isfile(pickle_filename):
         #the file exists
         print('File', pickle_filename, 'found')
-        kmeans = pickle_load()
+        kmeans = pickle_load(pickle_filename)
     else:
         print('Computing codebook for a vocabulary of', num_clusters)
         start = time.time()
@@ -101,8 +101,7 @@ def load_or_compute_pickle(num_clusters):
         pickle_save(kmeans, pickle_filename)
     return kmeans
 
-def test_vocabulary(desc_sel, desc_tr, desc_te):
-    vocabulary_sizes = [50,100,200,300,400]
+def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
     score_list = []
     for num_clusters in vocabulary_sizes:
         kmeans = load_or_compute_pickle(num_clusters)
@@ -263,8 +262,9 @@ training_data = data_train.reshape(150, num_clusters)
 test_data = data_test.reshape(150, num_clusters)
 
 
-
-score_list = test_vocabulary(desc_sel, desc_tr, desc_te)
+vocabulary_sizes = [50,100,200,300,400, 500, 750, 1000, 3000]
+score_list = test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te)
+print(score_list)
 
 
 num_clusters = 256
