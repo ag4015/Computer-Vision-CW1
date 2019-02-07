@@ -46,24 +46,12 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
     for i in range(10):
         for n in range(15):
             transformed = clf.apply(desc[i][n].T) 
-            histogram = []
+            histogram = np.zeros(n_leafs*2)
             for k in range(0,len(transformed)):
-                histogram = np.bincount(transformed[k], minlength=512)
-                bags_of_words.append(histogram)
+                histogram = histogram + np.bincount(transformed[k], minlength=n_leafs*2)
+            bags_of_words.append(histogram)
             sizes.append(len(transformed))
     bags_of_words = np.array(bags_of_words)
-
-    return bags_of_words, sizes
-    # for i in range(10):
-    #     for n in range(15):
-    #         transformed = clf.apply(desc_tr[i][n].T) 
-    #         histogram = []
-    #         histogram = np.zeros(512)
-    #         for k in range(0,len(transformed)):
-    #             histogram = histogram + np.bincount(transformed[k], minlength=512)
-    #         bags_of_words.append(histogram)
-    #         sizes.append(len(transformed))
-    # bags_of_words = np.array(bags_of_words)
 
     return bags_of_words, sizes
 
@@ -154,7 +142,7 @@ def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
     #pickle.dump(score_list, pickle_out)
     #pickle_out.close()
 
-def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators):
+def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators, n_leafs):
     
     print('Computing RF Codebook...')
 
@@ -173,10 +161,9 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators):
     # Compute the random forest
     # max_depth = 10
     # n_estimators = 100
-    RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=256, random_state=0, n_jobs=3)
+    RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=n_leafs, random_state=0, n_jobs=3)
     
     RFE.fit(data_train)
-    n_leafs = n_estimators * 2 ** max_depth
     
     # Compute the bag of words for each of the predictions
     histogram_train, sizes_train = bag_of_words_rf(desc_tr, desc_sizes, RFE, n_leafs)
@@ -269,9 +256,21 @@ num_clusters = 256
 train_labels = [i//15 for i in range(150)]
 test_labels = train_labels #in this case, since both are 10x15 images
 
-data_train, data_test, sizes_train, sizes_test = rf_codebook(desc_tr,desc_te, desc_sizes, 10, 100)
-train_labels = np.hstack([np.ones(sizes_train[i])*i for i in range(150)])
-test_labels = np.hstack([np.ones(sizes_test[i])*i for i in range(150)])
+data_train, data_test, sizes_train, sizes_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=10, n_estimators=100, n_leafs=256)
+
+pickle_save([data_train, data_test, sizes_train, sizes_test],'rf_codebook.pickle') 
+data_train, data_test, sizes_train, sizes_test = pickle_load('rf_codebook.pickle')
+# train_labels = np.hstack([np.ones(sizes_train[i])*i for i in range(150)])
+# test_labels = np.hstack([np.ones(sizes_test[i])*i for i in range(150)])
+# train_labels = np.empty(0)
+# test_labels = np.empty(0)
+# label = -1
+# for i in range(0,150):
+#     if i % 15 == 0:
+#         label = label +1
+#     train_labels = np.hstack((train_labels, label*np.ones(sizes_train[i])))
+#     test_labels = np.hstack((test_labels, label*np.ones(sizes_test[i]))) 
+
 
 RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0, n_jobs=3)
 RFC.fit(data_train, train_labels)
