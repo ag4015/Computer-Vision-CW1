@@ -42,7 +42,7 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
 
     print('Computing bag of words...')
     bags_of_words = []
-    sizes = []
+    sizes = [] #
     for i in range(10):
         for n in range(15):
             transformed = clf.apply(desc[i][n].T) 
