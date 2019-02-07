@@ -43,6 +43,7 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
     print('Computing bag of words...')
     bags_of_words = []
     sizes = []
+    import pdb; pdb.set_trace()
     for i in range(10):
         for n in range(15):
             transformed = clf.apply(desc[i][n].T) 
@@ -120,6 +121,7 @@ def load_or_compute_pickle(num_clusters):
 
 def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
     score_list = []
+
     for num_clusters in vocabulary_sizes:
         kmeans = load_or_compute_pickle(num_clusters)
 
