@@ -29,7 +29,6 @@ def pickle_load(file_name):
 def bag_of_words_histogram(desc, clf, num_clusters):
     #this function creates all bags of words for the entire input set (either training or test set)
     bags_of_words = []
-    import pdb; pdb.set_trace()
     for class_row in desc:
         class_histogram = []
         for image_descriptors in class_row:
@@ -43,17 +42,30 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
 
     print('Computing bag of words...')
     bags_of_words = []
+    sizes = []
     for i in range(10):
         for n in range(15):
-            transformed = clf.apply(desc_tr[i][n].T) 
+            transformed = clf.apply(desc[i][n].T) 
             histogram = []
             for k in range(0,len(transformed)):
                 histogram = np.bincount(transformed[k], minlength=512)
-            bags_of_words.append(histogram)
-
+                bags_of_words.append(histogram)
+            sizes.append(len(transformed))
     bags_of_words = np.array(bags_of_words)
 
-    return bags_of_words
+    return bags_of_words, sizes
+    # for i in range(10):
+    #     for n in range(15):
+    #         transformed = clf.apply(desc_tr[i][n].T) 
+    #         histogram = []
+    #         histogram = np.zeros(512)
+    #         for k in range(0,len(transformed)):
+    #             histogram = histogram + np.bincount(transformed[k], minlength=512)
+    #         bags_of_words.append(histogram)
+    #         sizes.append(len(transformed))
+    # bags_of_words = np.array(bags_of_words)
+
+    return bags_of_words, sizes
 
 def kmeans_codebook(desc_sel, num_clusters, compute):
     if compute:
@@ -142,7 +154,7 @@ def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
     #pickle.dump(score_list, pickle_out)
     #pickle_out.close()
 
-def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
+def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators):
     
     print('Computing RF Codebook...')
 
@@ -159,20 +171,20 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
     data_test = data_test.T
 
     # Compute the random forest
-    max_depth = 10
-    n_estimators = 100
+    # max_depth = 10
+    # n_estimators = 100
     RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=256, random_state=0, n_jobs=3)
     
     RFE.fit(data_train)
     n_leafs = n_estimators * 2 ** max_depth
     
     # Compute the bag of words for each of the predictions
-    histogram_train = bag_of_words_rf(desc_tr, desc_sizes, RFE, n_leafs)
-    histogram_test = bag_of_words_rf(desc_te, desc_sizes,  RFE, n_leafs)
+    histogram_train, sizes_train = bag_of_words_rf(desc_tr, desc_sizes, RFE, n_leafs)
+    histogram_test, sizes_test = bag_of_words_rf(desc_te, desc_sizes,  RFE, n_leafs)
 
     print('Done')
 
-    return histogram_train, histogram_test
+    return histogram_train, histogram_test, sizes_train, sizes_test
     
 def fit_and_predict(clf, training_data, train_labels, test_data, test_labels):
     #works for both GridSearchCV and ExtraTreesClassifier
@@ -257,12 +269,15 @@ num_clusters = 256
 train_labels = [i//15 for i in range(150)]
 test_labels = train_labels #in this case, since both are 10x15 images
 
-data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, compute=True)
+data_train, data_test, sizes_train, sizes_test = rf_codebook(desc_tr,desc_te, desc_sizes, 10, 100)
+train_labels = np.hstack([np.ones(sizes_train[i])*i for i in range(150)])
+test_labels = np.hstack([np.ones(sizes_test[i])*i for i in range(150)])
 
-RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0)
-RFC.fit(data_train, train_lables)
-score = RFC.score(data_test, test_lables)
+RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0, n_jobs=3)
+RFC.fit(data_train, train_labels)
+score = RFC.score(data_test, test_labels)
 print('RF codebook accuracy is: ', score)
+import pdb; pdb.set_trace()
 # Need to transform the data_train and data_test into something useful for RFC
 
 #For kmeans codebook, uncomment the following lines:
