@@ -48,8 +48,8 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
             transformed = clf.apply(desc[i][n].T) 
             histogram = np.zeros(n_leafs*2)
             for k in range(0,len(transformed)):
-                histogram = histogram + np.bincount(transformed[k], minlength=n_leafs*2)
-            bags_of_words.append(histogram)
+                histogram = np.bincount(transformed[k], minlength=128)
+                bags_of_words.append(histogram)
             sizes.append(len(transformed))
     bags_of_words = np.array(bags_of_words)
 
@@ -161,7 +161,7 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators, n_leafs):
     # Compute the random forest
     # max_depth = 10
     # n_estimators = 100
-    RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=n_leafs, random_state=0, n_jobs=3)
+    RFE = RandomTreesEmbedding(n_estimators=100, max_depth=6, max_leaf_nodes=None, random_state=0, n_jobs=3)
     
     RFE.fit(data_train)
     
@@ -272,7 +272,8 @@ data_train, data_test, sizes_train, sizes_test = pickle_load('rf_codebook.pickle
 #     test_labels = np.hstack((test_labels, label*np.ones(sizes_test[i]))) 
 
 
-RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0, n_jobs=3)
+RFC = ExtraTreesClassifier(n_estimators=100, max_depth=10, random_state=0, bootstrap=False, max_features='log2', n_jobs=3)
+
 RFC.fit(data_train, train_labels)
 score = RFC.score(data_test, test_labels)
 print('RF codebook accuracy is: ', score)
