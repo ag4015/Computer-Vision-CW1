@@ -43,22 +43,17 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
 
     print('Computing bag of words...')
     bags_of_words = []
-    for i in range(150):
+    for i in range(10):
+        for n in range(15):
+            transformed = clf.apply(desc_tr[i][n].T) 
+            histogram = []
+            for k in range(0,len(transformed)):
+                histogram = np.bincount(transformed[k], minlength=512)
+            bags_of_words.append(histogram)
 
-        class_histogram = []
+    bags_of_words = np.array(bags_of_words)
 
-        # Avoid -1 indexing of desc_sizes in desc_sizes[0][image-1]
-        if i != 0:
-            transformed = clf.apply(desc[desc_sizes[0][i-1]:(desc_sizes[0][i]+desc_sizes[0][i-1])])
-        else:
-            transformed = clf.apply(desc[0:desc_sizes[0][0]])
-
-        for n in range(len(transformed)):
-            histogram = np.bincount(transformed[n], minlength=510)
-            class_histogram.append(histogram)
-            
-        bags_of_words.append(class_histogram)
-    return np.array(bags_of_words) #converts list of lists into a numpy array
+    return bags_of_words
 
 def kmeans_codebook(desc_sel, num_clusters, compute):
     if compute:
@@ -151,8 +146,6 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
     
     print('Computing RF Codebook...')
 
-    # One lable corresponds to one image
-    train_labels = np.hstack([np.ones(desc_sizes[0][i])*i for i in range(150)]).astype(int)
     # Reformat the training and testing data
     for i in range(10):
         for n in range(15):
@@ -166,31 +159,17 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
     data_test = data_test.T
 
     # Compute the random forest
-    if compute:
-        max_depth = 10
-        n_estimators = 100
-        # RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=256, random_state=0, n_jobs=3)
-        
-        # import pdb; pdb.set_trace()
-        # RFE.fit(data_train)
-        n_leafs = n_estimators * 2 ** max_depth
-        
-        # pickle_out = open('rfe.pickle', 'wb')
-        # pickle.dump(RFE, pickle_out) 
-        # pickle_out.close()
-
-        pickle_in = open('rfe.pickle', 'rb')
-        RFE = pickle.load(pickle_in)
-        pickle_in.close()
-        histogram_train = bag_of_words_rf(data_train, desc_sizes, RFE, n_leafs)
-        histogram_test = bag_of_words_rf(data_test, desc_sizes,  RFE, n_leafs)
-    else:
-        pass
-        # pickle_in = open('rf_codebook.pickle', 'rb')
-        # RFE, histogram_train, histogram_test = pickle.load(pickle_in)
-        # pickle_in.close()
-
+    max_depth = 10
+    n_estimators = 100
+    RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=256, random_state=0, n_jobs=3)
     
+    RFE.fit(data_train)
+    n_leafs = n_estimators * 2 ** max_depth
+    
+    # Compute the bag of words for each of the predictions
+    histogram_train = bag_of_words_rf(desc_tr, desc_sizes, RFE, n_leafs)
+    histogram_test = bag_of_words_rf(desc_te, desc_sizes,  RFE, n_leafs)
+
     print('Done')
 
     return histogram_train, histogram_test
@@ -279,7 +258,12 @@ train_labels = [i//15 for i in range(150)]
 test_labels = train_labels #in this case, since both are 10x15 images
 
 data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, compute=True)
-import pdb; pdb.set_trace()
+
+RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0)
+RFC.fit(data_train, train_lables)
+score = RFC.score(data_test, test_lables)
+print('RF codebook accuracy is: ', score)
+# Need to transform the data_train and data_test into something useful for RFC
 
 #For kmeans codebook, uncomment the following lines:
 data_train, data_test = kmeans_codebook(desc_sel, num_clusters, compute_kmeans)
