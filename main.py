@@ -13,6 +13,19 @@ from matplotlib import cm
 import time
 from scipy.interpolate import make_interp_spline, BSpline
 
+def pickle_save(x, file_name):
+    #custom function to save variables locally
+    pickle_out = open(file_name, 'wb')
+    pickle.dump(x, pickle_out)
+    pickle_out.close()
+
+def pickle_load(file_name):
+    #custom function to load variables
+    pickle_in = open(file_name, 'rb')
+    x = pickle.load(pickle_in)
+    pickle_in.close()
+    return x
+
 def bag_of_words_histogram(desc, kmeans, num_clusters):
     #this function creates all bags of words for the entire input set (either training or test set)
     bags_of_words = []
@@ -29,40 +42,21 @@ def kmeans_codebook(desc_sel, num_clusters, compute):
     if compute:
         print('Computing K-Means...')
         kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = -1).fit(desc_sel)
-        pickle_out = open('kmeans.pickle', 'wb')
-        pickle.dump(kmeans,pickle_out) 
-        pickle_out.close()
+        pickle_save(kmeans, 'kmeans.pickle')
     else:
-        pickle_in = open('kmeans.pickle', 'rb')
-        kmeans = pickle.load(pickle_in)
+        kmeans = pickle_load('kmeans.pickle')
 
     codewords = kmeans.cluster_centers_.copy()
-
     histogram_train = bag_of_words_histogram(desc_tr, kmeans, num_clusters)
     histogram_test = bag_of_words_histogram(desc_te, kmeans, num_clusters)
-
     # data_train contains the bags of words of the entire training set
     # data_test contains the bags of words of the entire test set
 
     #an example of a training set image histogram would be
     # plt.plot(data_train[8][6]) #training image class 9 image 7
     # plt.show()
-
     print("Done")
-    
     return histogram_train, histogram_test
-
-def pickle_save(x, file_name):
-    pickle_out = open(file_name, 'wb')
-    pickle.dump(x, pickle_out)
-    pickle_out.close()
-
-def pickle_load(file_name):
-    pickle_in = open(file_name, 'rb')
-    x = pickle.load(pickle_in)
-    pickle_in.close()
-    return x
-
 
 def print_all_CV_scores(clf):
     for (params, score, mean_fit_time, mean_score_time) in zip(clf.cv_results_['params'], clf.cv_results_['mean_test_score'], clf.cv_results_['mean_fit_time'], clf.cv_results_['mean_score_time']):
@@ -92,13 +86,27 @@ def test_RF_classifier_params(parameters, training_data, train_labels, test_data
         print(X[index], Y[index], Z[index])
     return X, Y, Z, np.array(all_times)
 
+def load_or_compute_pickle(num_clusters):
+    pickle_filename = 'kmeans_' + str(num_clusters) + '.pickle'
+    if os.path.isfile(pickle_filename):
+        #the file exists
+        print('File', pickle_filename, 'found')
+        kmeans = pickle_load()
+    else:
+        print('Computing codebook for a vocabulary of', num_clusters)
+        start = time.time()
+        kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(desc_sel)
+        time_taken = time.time() - start
+        print('time taken:', time_taken)
+        pickle_save(kmeans, pickle_filename)
+    return kmeans
+
 def test_vocabulary(desc_sel, desc_tr, desc_te):
     vocabulary_sizes = [50,100,200,300,400]
     score_list = []
     for num_clusters in vocabulary_sizes:
-        print('Computing codebook for a vocabulary of', num_clusters)
-        kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(desc_sel)
-        
+        kmeans = load_or_compute_pickle(num_clusters)
+
         # Construct training data labels
         train_labels = [i//15 for i in range(150)]
         test_labels = train_labels #in this case, since both are 10x15 images
@@ -109,13 +117,14 @@ def test_vocabulary(desc_sel, desc_tr, desc_te):
 
         print('Computing RF for a vocabulary of', num_clusters)
         # Use best performing parameters for RF
-        RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0).fit(data_train, train_labels)
+        RFC = ExtraTreesClassifier(n_estimators=100, max_depth=10, bootstrap=False, random_state=0).fit(data_train, train_labels)
         score = RFC.score(data_test, test_labels)
         score_list.append(score)
         print('score:', score)
-    pickle_out = open('vocabulary_scores.pickle', 'wb')
-    pickle.dump(score_list, pickle_out)
-    pickle_out.close()
+    return score_list
+    #pickle_out = open('vocabulary_scores.pickle', 'wb')
+    #pickle.dump(score_list, pickle_out)
+    #pickle_out.close()
 
 def rf_codebook(desc_tr, desc_te, desc_sizes, compute):
     
@@ -248,28 +257,14 @@ test_labels = train_labels #in this case, since both are 10x15 images
 
 #For kmeans codebook, uncomment the following lines:
 data_train, data_test = kmeans_codebook(desc_sel, num_clusters, compute_kmeans)
+
 # Flatten out train and test data (preparing them for RF classifier)
 training_data = data_train.reshape(150, num_clusters)
 test_data = data_test.reshape(150, num_clusters)
 
 
-# RFC = ExtraTreesClassifier(n_estimators=100, max_depth=10, bootstrap=True, random_state=0)
-# parameters = {'n_estimators':[10, 100], 'max_depth':[5, 10, 20]}
-# # Compute GridSearchCV or load it from file
-# if compute_search:
-#     clf = GridSearchCV(RFC, param_grid=parameters, cv=3, return_train_score=False, n_jobs=3)
-#     clf.fit(training_data, train_labels)
-#     pickle_out = open('clf.pickle', 'wb')
-#     pickle.dump(clf, pickle_out)
-#     pickle_out.close()
-# else:
-#     pickle_in = open('clf.pickle', 'rb')
-#     clf = pickle.load(pickle_in)
-#     pickle_in.close()
-# predictions = clf.predict(test_data)
-# reshaped_preds = predictions.reshape(10, 15)
-# print(reshaped_preds)
-# print('score:', clf.score(test_data, test_labels))
+
+score_list = test_vocabulary(desc_sel, desc_tr, desc_te)
 
 
 num_clusters = 256
@@ -279,12 +274,12 @@ parameters = {'n_estimators':[100], 'max_depth':[5], 'max_features':[10]}
 #clf = GridSearchCV(RFC, param_grid=parameters, cv=5, return_train_score=False)
 
 #parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
-parameters['max_depth'] = np.linspace(1, 40, num=40, dtype=int)
+parameters['max_depth'] = np.linspace(1, 40, num=5, dtype=int)
 
 X, Y, Z, all_times = test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels) #using for loops on test data
 #plot_3d(X, Y, Z)
 
-pickle_save([X, Y, Z, all_times], 'tree_depth_time.pickle')
+#pickle_save([X, Y, Z, all_times], 'tree_depth_time.pickle')
 
 vars_list = pickle_load('tree_depth_time.pickle')
 
@@ -305,6 +300,7 @@ print('test times:', all_times[:,1])
 
 #print scores and times for all parameters tested
 #print_all_CV_scores(clf)
+
 
 print("done")
 
