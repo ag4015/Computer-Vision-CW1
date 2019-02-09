@@ -38,6 +38,33 @@ def bag_of_words_histogram(desc, clf, num_clusters):
         bags_of_words.append(class_histogram)
     return np.array(bags_of_words) #converts list of lists into a numpy array
 
+def bag_of_words_rf_jorge(desc, desc_sizes, clf, n_leafs):
+    print('Computing bag of words...')
+    bags_of_words = []
+    for class_row in desc:
+        print('class...')
+        class_histogram = []
+        for image_descriptors in class_row:
+            #for each image...
+            all_leaf_nodes_indices = clf.apply(image_descriptors.T)
+            image_histograms = []
+            for descriptor_indices in all_leaf_nodes_indices:
+                ensemble_histogram = np.array([], dtype=int)
+                for index in descriptor_indices:
+                    tree_histogram = np.bincount([index], minlength=n_leafs*2)
+                    ensemble_histogram = np.concatenate((ensemble_histogram, tree_histogram))
+                #ensemble_histogram = [np.bincount([index], minlength=n_leafs*2) for index in descriptor_indices]
+                ensemble_histogram = np.array(ensemble_histogram)
+                image_histograms.append(ensemble_histogram)
+            image_histograms = np.array(image_histograms)
+            histogram_sum = np.sum(image_histograms, axis=0)
+            class_histogram.append(histogram_sum)
+        bags_of_words.append(class_histogram)
+    return np.array(bags_of_words)
+            
+
+
+
 def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
 
     print('Computing bag of words...')
@@ -46,20 +73,19 @@ def bag_of_words_rf(desc, desc_sizes, clf, n_leafs):
     import pdb; pdb.set_trace()
     for i in range(10):
         for n in range(15):
-            transformed = clf.apply(desc[i][n].T) 
+            transformed = clf.apply(desc[i][n].T)
             histogram = np.zeros(n_leafs*2)
             for k in range(0,len(transformed)):
                 histogram = histogram + np.bincount(transformed[k], minlength=n_leafs*2)
             bags_of_words.append(histogram)
             sizes.append(len(transformed))
     bags_of_words = np.array(bags_of_words)
-
     return bags_of_words, sizes
 
 def kmeans_codebook(desc_sel, num_clusters, compute):
     if compute:
         print('Computing K-Means...')
-        kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = -1).fit(desc_sel)
+        kmeans = cluster.KMeans(n_clusters=num_clusters, n_init=1, random_state=0, n_jobs=-1).fit(desc_sel)
         pickle_save(kmeans, 'kmeans.pickle')
     else:
         kmeans = pickle_load('kmeans.pickle')
@@ -168,12 +194,12 @@ def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators, n_leafs):
     RFE.fit(data_train)
     
     # Compute the bag of words for each of the predictions
-    histogram_train, sizes_train = bag_of_words_rf(desc_tr, desc_sizes, RFE, n_leafs)
-    histogram_test, sizes_test = bag_of_words_rf(desc_te, desc_sizes,  RFE, n_leafs)
+    histogram_train = bag_of_words_rf_jorge(desc_tr, desc_sizes, RFE, n_leafs)
+    histogram_test = bag_of_words_rf_jorge(desc_te, desc_sizes,  RFE, n_leafs)
 
     print('Done')
 
-    return histogram_train, histogram_test, sizes_train, sizes_test
+    return histogram_train, histogram_test
     
 def fit_and_predict(clf, training_data, train_labels, test_data, test_labels):
     #works for both GridSearchCV and ExtraTreesClassifier
@@ -258,10 +284,15 @@ num_clusters = 256
 train_labels = [i//15 for i in range(150)]
 test_labels = train_labels #in this case, since both are 10x15 images
 
-data_train, data_test, sizes_train, sizes_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=10, n_estimators=100, n_leafs=256)
+data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=4, n_estimators=30, n_leafs=32)
 
-pickle_save([data_train, data_test, sizes_train, sizes_test],'rf_codebook.pickle') 
-data_train, data_test, sizes_train, sizes_test = pickle_load('rf_codebook.pickle')
+training_data = data_train.reshape(150, -1)
+test_data = data_test.reshape(150, -1)
+
+
+pickle_save([data_train, data_test],'rf_codebook.pickle')
+[data_train, data_test] = pickle_load('rf_codebook.pickle')
+
 # train_labels = np.hstack([np.ones(sizes_train[i])*i for i in range(150)])
 # test_labels = np.hstack([np.ones(sizes_test[i])*i for i in range(150)])
 # train_labels = np.empty(0)
@@ -275,8 +306,8 @@ data_train, data_test, sizes_train, sizes_test = pickle_load('rf_codebook.pickle
 
 
 RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0, n_jobs=3)
-RFC.fit(data_train, train_labels)
-score = RFC.score(data_test, test_labels)
+RFC.fit(training_data, train_labels)
+score = RFC.score(test_data, test_labels)
 print('RF codebook accuracy is: ', score)
 import pdb; pdb.set_trace()
 # Need to transform the data_train and data_test into something useful for RFC
