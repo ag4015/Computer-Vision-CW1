@@ -42,7 +42,7 @@ def bag_of_words_rf_jorge(desc, desc_sizes, clf, n_leafs):
     print('Computing bag of words...')
     bags_of_words = []
     for class_row in desc:
-        print('class...')
+        # print('class...')
         class_histogram = []
         for image_descriptors in class_row:
             #for each image...
@@ -135,14 +135,14 @@ def load_or_compute_pickle(num_clusters):
     if os.path.isfile(pickle_filename):
         #the file exists
         print('File', pickle_filename, 'found')
-        kmeans = pickle_load(pickle_filename)
+        kmeans, time_taken = pickle_load(pickle_filename)
     else:
         print('Computing codebook for a vocabulary of', num_clusters)
         start = time.time()
-        kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs = 3).fit(desc_sel)
+        kmeans = cluster.KMeans(n_clusters=num_clusters, random_state=0, n_jobs=3).fit(desc_sel)
         time_taken = time.time() - start
         print('time taken:', time_taken)
-        pickle_save(kmeans, pickle_filename)
+        pickle_save([kmeans, time_taken], pickle_filename)
     return kmeans
 
 def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
@@ -165,10 +165,10 @@ def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
         score = RFC.score(data_test, test_labels)
         score_list.append(score)
         print('score:', score)
+    pickle_out = open('vocabulary_scores.pickle', 'wb')
+    pickle.dump(score_list, pickle_out)
+    pickle_out.close()
     return score_list
-    #pickle_out = open('vocabulary_scores.pickle', 'wb')
-    #pickle.dump(score_list, pickle_out)
-    #pickle_out.close()
 
 def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators, n_leafs):
     
@@ -256,8 +256,73 @@ def plot_3d(X, Y, Z):
     plt.show()
 
 
+def plot_vocabulary_sizes(vocabulary_sizes):
+    
+    scores = 100*np.array(pickle_load('vocabulary_scores.pickle'))
+    times = []
+    [times.append(pickle_load('kmeans_'+str(i)+'.pickle')[1]) for i in vocabulary_sizes]
+    fig, ax1 = plt.subplots()
+    ax1.plot(vocabulary_sizes, scores, color='b')
+    ax1.set_xlabel('Vocabulary size')
+    ax1.set_ylabel('Accuracy (%)')
+    # xticks = np.linrange(1,100,1000)
+    # ax1.set_xticks(xticks)
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    ax2.plot(vocabulary_sizes, times, color='r')
+    ax2.set_ylabel('Time (s)')
+    ax2.legend(['Train time'], loc=1)
+    ax1.legend(['Accuracy (%)'], loc=2)
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    plt.savefig('vocab_sizes.png', bbox_inches='tight', dpi=300)
+    # plt.plot(vocabulary_sizes, scores)
+    plt.show()
 
+def plot_histogram():
+    
+    num_clusters = 350
+    kmeans = load_or_compute_pickle(num_clusters)
 
+    train_labels = [i//15 for i in range(150)]
+    test_labels = train_labels #in this case, since both are 10x15 images
+
+    # Calculate the bag of words for training and test data
+    data_train = bag_of_words_histogram(desc_tr, kmeans, num_clusters).reshape(150,num_clusters)
+    data_test = bag_of_words_histogram(desc_te, kmeans, num_clusters).reshape(150,num_clusters)
+    plt.figure()
+    plt.plot(data_train[0],'blue')
+    plt.plot(data_test[1], 'red')
+    plt.xlabel('Codeword number')
+    plt.ylabel('Number of occurences')
+    plt.legend(['Training image', 'Testing image'])
+    plt.savefig('histogram.png', bbox_inches='tight', dpi=300)
+    plt.show()
+
+def test_RF_codebook_params(parameters, desc_tr, train_labels, desc_te, test_labels, desc_sizes):
+    X = [] #param1,
+    Y = [] #param2
+    Z = [] #accuracy scores
+    all_times = [] #train and test time
+    n_leafs = 200
+    for n_estimators in parameters['n_estimators']:
+        for max_depth in parameters['max_depth']:
+            display = 'Computing RF codebook classifier for ' + str(n_estimators) + ' trees, and  ' + str(max_depth) + ' max_depth'
+            print(display)
+            data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=max_depth, n_estimators=n_estimators, n_leafs=100)
+            RFC = ExtraTreesClassifier(n_estimators=100, criterion= 'entropy', bootstrap=False, max_features=256, max_depth=10, random_state=0, n_jobs=2)
+            training_data = data_train.reshape(150, n_estimators*n_leafs)
+            test_data = data_test.reshape(150, n_estimators*n_leafs)
+            preds, score, RFC_fit, time_list = fit_and_predict(RFC, training_data, train_labels, test_data, test_labels)
+            X.append(max_depth)
+            Y.append(n_estimators)
+            Z.append(score)
+            print('Score: ', score)
+            all_times.append(time_list)
+    max_scores_indices = np.argsort(Z)[-6:-1]
+    # pickle_save([X,Y,Z,all_times], 'rf_codebook_params.pickle')
+    print('max scores:')
+    for index in max_scores_indices:
+        print(X[index], Y[index], Z[index])
+    return X, Y, Z, np.array(all_times)
 
 
 #load variables from matlab data
@@ -284,82 +349,91 @@ num_clusters = 256
 train_labels = [i//15 for i in range(150)]
 test_labels = train_labels #in this case, since both are 10x15 images
 
-data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=4, n_estimators=30, n_leafs=32)
+# data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=4, n_estimators=30, n_leafs=32)
+#
+# training_data = data_train.reshape(150, -1)
+# test_data = data_test.reshape(150, -1)
+#
+#
+# pickle_save([data_train, data_test],'rf_codebook.pickle')
+# [data_train, data_test] = pickle_load('rf_codebook.pickle')
+#
+# # train_labels = np.hstack([np.ones(sizes_train[i])*i for i in range(150)])
+# # test_labels = np.hstack([np.ones(sizes_test[i])*i for i in range(150)])
+# # train_labels = np.empty(0)
+# # test_labels = np.empty(0)
+# # label = -1
+# # for i in range(0,150):
+# #     if i % 15 == 0:
+# #         label = label +1
+# #     train_labels = np.hstack((train_labels, label*np.ones(sizes_train[i])))
+# #     test_labels = np.hstack((test_labels, label*np.ones(sizes_test[i]))) 
+#
+#
+# RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0, n_jobs=3)
+# RFC.fit(training_data, train_labels)
+# score = RFC.score(test_data, test_labels)
+# print('RF codebook accuracy is: ', score)
+# import pdb; pdb.set_trace()
+# # Need to transform the data_train and data_test into something useful for RFC
+#
+# #For kmeans codebook, uncomment the following lines:
+# data_train, data_test = kmeans_codebook(desc_sel, num_clusters, compute_kmeans)
+#
+# # Flatten out train and test data (preparing them for RF classifier)
+# training_data = data_train.reshape(150, num_clusters)
+# test_data = data_test.reshape(150, num_clusters)
+#
+#
+# vocabulary_sizes = [10,20,25,30,40,50,60,75,80,90,100,125,150,175,200,225,250,275,300,350,400,450, 500,550,600,650,700,750, 1000,2000]
+# score_list = test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te)
+# print(score_list)
+# plot_vocabulary_sizes(vocabulary_sizes)
+# plot_histogram()
+parameters = {'n_estimators':[25,75,100], 'max_depth':[1,5,10,15,30]}
+X, Y, Z, all_times = test_RF_codebook_params(parameters, desc_tr, train_labels, desc_te, test_labels, desc_sizes) #using for loops on test data
 
-training_data = data_train.reshape(150, -1)
-test_data = data_test.reshape(150, -1)
 
-
-pickle_save([data_train, data_test],'rf_codebook.pickle')
-[data_train, data_test] = pickle_load('rf_codebook.pickle')
-
-# train_labels = np.hstack([np.ones(sizes_train[i])*i for i in range(150)])
-# test_labels = np.hstack([np.ones(sizes_test[i])*i for i in range(150)])
-# train_labels = np.empty(0)
-# test_labels = np.empty(0)
-# label = -1
-# for i in range(0,150):
-#     if i % 15 == 0:
-#         label = label +1
-#     train_labels = np.hstack((train_labels, label*np.ones(sizes_train[i])))
-#     test_labels = np.hstack((test_labels, label*np.ones(sizes_test[i]))) 
-
-
-RFC = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0, n_jobs=3)
-RFC.fit(training_data, train_labels)
-score = RFC.score(test_data, test_labels)
-print('RF codebook accuracy is: ', score)
+# plot_3d(X, Y, Z)
 import pdb; pdb.set_trace()
-# Need to transform the data_train and data_test into something useful for RFC
+# import os; os.system('poweroff')
 
-#For kmeans codebook, uncomment the following lines:
-data_train, data_test = kmeans_codebook(desc_sel, num_clusters, compute_kmeans)
-
-# Flatten out train and test data (preparing them for RF classifier)
-training_data = data_train.reshape(150, num_clusters)
-test_data = data_test.reshape(150, num_clusters)
-
-
-vocabulary_sizes = [50,100,200,300,400, 500, 750, 1000, 3000]
-score_list = test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te)
-print(score_list)
-
-
-num_clusters = 256
-max_features = num_clusters #max_features controls the randomness parameter (assuming bootstrap=False)
-
+#
+# num_clusters = 256
+# max_features = num_clusters #max_features controls the randomness parameter (assuming bootstrap=False)
+#
 parameters = {'n_estimators':[100], 'max_depth':[5], 'max_features':[10]}
-#clf = GridSearchCV(RFC, param_grid=parameters, cv=5, return_train_score=False)
+# #clf = GridSearchCV(RFC, param_grid=parameters, cv=5, return_train_score=False)
 
-#parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
+parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
 parameters['max_depth'] = np.linspace(1, 40, num=5, dtype=int)
-
+#
 X, Y, Z, all_times = test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels) #using for loops on test data
-#plot_3d(X, Y, Z)
-
-#pickle_save([X, Y, Z, all_times], 'tree_depth_time.pickle')
-
-vars_list = pickle_load('tree_depth_time.pickle')
-
-vars_list[0] = np.array(vars_list[0])
-
-spl_acc, xnew = do_bsplines(vars_list[0], vars_list[2], 80)
-spl_tr, xnew = do_bsplines(vars_list[0], vars_list[3][:,0], 80)
-spl_te, xnew = do_bsplines(vars_list[0], vars_list[3][:,1], 80)
-
-plot_acc_times(xnew, 100*np.array(spl_acc(xnew)), spl_tr(xnew), spl_te(xnew))
-#plot_acc_times(vars_list[0], 100*np.array(vars_list[2]), vars_list[3][:,0], vars_list[3][:,1])
-
-print(vars_list[3][:,1])
-print(spl_te(xnew))
-print(all_times)
-print('train times:', all_times[:,0])
-print('test times:', all_times[:,1])
-
-#print scores and times for all parameters tested
-#print_all_CV_scores(clf)
-
-
-print("done")
+plot_3d(X, Y, Z)
+#
+# #pickle_save([X, Y, Z, all_times], 'tree_depth_time.pickle')
+#
+# vars_list = pickle_load('tree_depth_time.pickle')
+#
+# vars_list[0] = np.array(vars_list[0])
+#
+# spl_acc, xnew = do_bsplines(vars_list[0], vars_list[2], 80)
+# spl_tr, xnew = do_bsplines(vars_list[0], vars_list[3][:,0], 80)
+# spl_te, xnew = do_bsplines(vars_list[0], vars_list[3][:,1], 80)
+#
+# plot_acc_times(xnew, 100*np.array(spl_acc(xnew)), spl_tr(xnew), spl_te(xnew))
+# #plot_acc_times(vars_list[0], 100*np.array(vars_list[2]), vars_list[3][:,0], vars_list[3][:,1])
+#
+# print(vars_list[3][:,1])
+# print(spl_te(xnew))
+# print(all_times)
+# print('train times:', all_times[:,0])
+# print('test times:', all_times[:,1])
+#
+# #print scores and times for all parameters tested
+# #print_all_CV_scores(clf)
+#
+#
+# print("done")
 
 #test_vocabulary(desc_sel, desc_tr, desc_te)
