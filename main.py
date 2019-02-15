@@ -172,7 +172,7 @@ def test_vocabulary(vocabulary_sizes, desc_sel, desc_tr, desc_te):
     pickle_out.close()
     return score_list
 
-def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators, n_leafs):
+def rf_codebook(desc_tr, desc_te, desc_sizes, max_depth, n_estimators, n_leafs, return_time=False):
     
     print('Computing RF Codebook...')
 
@@ -372,9 +372,10 @@ def plot_confusion_matrix(desc_sel):
     plt.subplot(121)
     sn.heatmap(df_cm, annot=True)
     plt.savefig('confusion_matrix_ex2.png', bbox_inches='tight', dpi=300)
-    import pdb; pdb.set_trace()
 
-    data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=max_depth, n_estimators=n_estimators, n_leafs=100)
+    n_estimators = 100
+    n_leafs = 100
+    data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=max_depth, n_estimators=n_estimators, n_leafs=n_leafs)
     RFC = ExtraTreesClassifier(n_estimators=75, criterion= 'entropy', bootstrap=False, max_features=256, max_depth=10, random_state=0, n_jobs=2)
     training_data = data_train.reshape(150, n_estimators*n_leafs)
     test_data = data_test.reshape(150, n_estimators*n_leafs)
@@ -384,6 +385,35 @@ def plot_confusion_matrix(desc_sel):
     plt.savefig('confusion_matrix_ex3.png', bbox_inches='tight', dpi=300)
     import pdb; pdb.set_trace()
     return
+
+def get_rf_codebook_times():
+
+    print('Computing RF Codebook...')
+
+    # Reformat the training and testing data
+    for i in range(10):
+        for n in range(15):
+            if i == 0 and n == 0:
+                data_train = desc_tr[i][n]
+                data_test = desc_te[i][n]
+            else:
+                data_train = np.hstack((data_train, desc_tr[i][n]))
+                data_test = np.hstack((data_test, desc_te[i][n]))
+    data_train = data_train.T
+    data_test = data_test.T
+
+    # Compute the random forest
+    max_depth = 10
+    times = []
+    vocabulary_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 17, 20, 24, 28, 33, 39, 45, 50, 60, 75, 100, 150, 200, 250, 300, 350, 400, 500, 600, 750, 850, 1000]
+    for n_estimators in vocabulary_sizes:
+        start_time = time.time()
+        RFE = RandomTreesEmbedding(n_estimators=n_estimators, max_depth=max_depth, max_leaf_nodes=n_leafs, random_state=0, n_jobs=3)
+
+        RFE.fit(data_train)
+        times.append(time.time() - start_time)
+    return times
+    
 
 
 #load variables from matlab data
