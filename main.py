@@ -1,5 +1,7 @@
 import os
 import sys
+import pandas as pd
+import seaborn as sn
 import cv2
 from sklearn import cluster
 from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, RandomTreesEmbedding, ExtraTreesClassifier
@@ -206,13 +208,13 @@ def fit_and_predict(clf, training_data, train_labels, test_data, test_labels):
     start = time.time()
     clf.fit(training_data, train_labels)
     fit_time = time.time() - start
-    #predictions = clf.predict(test_data)
+    predictions = clf.predict(test_data)
     reshaped_preds = 0
     #reshaped_preds = predictions.reshape(10, 15)
     start = time.time()
     score = clf.score(test_data, test_labels)
     test_time = time.time() - start
-    return reshaped_preds, score, clf, [fit_time, test_time]
+    return predictions.reshape(10,15), score, clf, [fit_time, test_time]
 
 def do_bsplines(var1, var2, num_points):
     spl = make_interp_spline(var1, var2, k=3)
@@ -324,6 +326,54 @@ def test_RF_codebook_params(parameters, desc_tr, train_labels, desc_te, test_lab
         print(X[index], Y[index], Z[index])
     return X, Y, Z, np.array(all_times)
 
+def plot_rf_codebook():
+    
+    y_25 = np.array([0.573, 0.633, 0.687, 0.706,  0.74, 0.727, 0.686, 0.68, 0.693, 0.633, 0.727, 0.653,  0.66])*100
+    y_75 = np.array([0.62,0.62,0.66,0.693,0.707,0.767,0.727,0.686, 0.693,0.7,0.707,0.68,0.68])*100
+    y_100 = np.array([0.613,0.64,0.647,0.72,0.747,0.727,0.727, 0.707, 0.693,0.673,0.693,0.68, 0.67])*100
+    x = [1,2,3,5,6,7,10,12,13,15,16,17,20]
+    plt.figure()
+    plt.plot(x, y_25)
+    plt.plot(x, y_75)
+    plt.plot(x, y_100)
+    plt.xlabel('Maximum depth of trees')
+    plt.ylabel('Accuracy (%)')
+    plt.legend(['25 trees', '75 trees', '100 trees'])
+    plt.savefig('rf_codebook.png', bbox_inches='tight', dpi=300)
+    plt.xticks(np.arange(0, 22, step=2))
+    plt.show()
+
+def plot_confusion_matrix(desc_sel):
+    num_clusters = 350 
+    n_estimators = 200
+    max_features = num_clusters
+    max_depth = 10
+    classes = ['tick', 'trilobite', 'umbrella', 'watch', 'water_lilly', 'wheelchair', 'wild_cat', 'windsor_chair', 'wrench', 'yin_yang']
+    kmeans = load_or_compute_pickle(num_clusters)
+
+    # Construct training data labels
+    train_labels = [i//15 for i in range(150)]
+    test_labels = train_labels #in this case, since both are 10x15 images
+
+    # Calculate the bag of words for training and test data
+    data_train = bag_of_words_histogram(desc_tr, kmeans, num_clusters).reshape(150,num_clusters)
+    data_test = bag_of_words_histogram(desc_te, kmeans, num_clusters).reshape(150,num_clusters)
+
+    training_data = data_train.reshape(150, num_clusters)
+    test_data = data_test.reshape(150, num_clusters)
+    RFC = ExtraTreesClassifier(n_estimators=n_estimators, criterion= 'entropy', bootstrap=False, max_features=max_features, max_depth=max_depth, random_state=0)
+    preds, score, RFC_fit, time_list = fit_and_predict(RFC, training_data, train_labels, test_data, test_labels)
+    confusion = np.zeros((10,10))
+    for i in range(0,10):
+        confusion[i,:] = np.bincount(preds[i,:], minlength=10)
+    df_cm = pd.DataFrame(confusion, index = [i for i in classes],
+                  columns = [i for i in classes])
+    plt.figure(figsize = (10,7))
+    sn.heatmap(df_cm, annot=True)
+    plt.savefig('confusion_matrix.png', bbox_inches='tight', dpi=300)
+    plt.show()
+    return
+
 
 #load variables from matlab data
 desc_tr = scipy.io.loadmat('matlab_data/desc_tr.mat')['desc_tr']
@@ -390,26 +440,28 @@ test_labels = train_labels #in this case, since both are 10x15 images
 # print(score_list)
 # plot_vocabulary_sizes(vocabulary_sizes)
 # plot_histogram()
-parameters = {'n_estimators':[25,75,100], 'max_depth':[1,5,10,15,30]}
-X, Y, Z, all_times = test_RF_codebook_params(parameters, desc_tr, train_labels, desc_te, test_labels, desc_sizes) #using for loops on test data
+# plot_rf_codebook()
+# parameters = {'n_estimators':[100], 'max_depth':[13,16,17]}
+# X, Y, Z, all_times = test_RF_codebook_params(parameters, desc_tr, train_labels, desc_te, test_labels, desc_sizes) #using for loops on test data
 
+plot_confusion_matrix(desc_sel)
 
 # plot_3d(X, Y, Z)
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 # import os; os.system('poweroff')
 
 #
 # num_clusters = 256
 # max_features = num_clusters #max_features controls the randomness parameter (assuming bootstrap=False)
 #
-parameters = {'n_estimators':[100], 'max_depth':[5], 'max_features':[10]}
+# parameters = {'n_estimators':[100], 'max_depth':[5], 'max_features':[10]}
 # #clf = GridSearchCV(RFC, param_grid=parameters, cv=5, return_train_score=False)
 
-parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
-parameters['max_depth'] = np.linspace(1, 40, num=5, dtype=int)
+# parameters['max_depth'] = np.linspace(1, 20, num=10, dtype=int)
+# parameters['max_depth'] = np.linspace(1, 40, num=5, dtype=int)
 #
-X, Y, Z, all_times = test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels) #using for loops on test data
-plot_3d(X, Y, Z)
+# X, Y, Z, all_times = test_RF_classifier_params(parameters, training_data, train_labels, test_data, test_labels) #using for loops on test data
+# plot_3d(X, Y, Z)
 #
 # #pickle_save([X, Y, Z, all_times], 'tree_depth_time.pickle')
 #
