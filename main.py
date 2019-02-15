@@ -344,7 +344,7 @@ def plot_rf_codebook():
     plt.show()
 
 def plot_confusion_matrix(desc_sel):
-    num_clusters = 350 
+    num_clusters = 400 
     n_estimators = 200
     max_features = num_clusters
     max_depth = 10
@@ -369,9 +369,20 @@ def plot_confusion_matrix(desc_sel):
     df_cm = pd.DataFrame(confusion, index = [i for i in classes],
                   columns = [i for i in classes])
     plt.figure(figsize = (10,7))
+    plt.subplot(121)
     sn.heatmap(df_cm, annot=True)
-    plt.savefig('confusion_matrix.png', bbox_inches='tight', dpi=300)
-    plt.show()
+    plt.savefig('confusion_matrix_ex2.png', bbox_inches='tight', dpi=300)
+    import pdb; pdb.set_trace()
+
+    data_train, data_test = rf_codebook(desc_tr,desc_te, desc_sizes, max_depth=max_depth, n_estimators=n_estimators, n_leafs=100)
+    RFC = ExtraTreesClassifier(n_estimators=75, criterion= 'entropy', bootstrap=False, max_features=256, max_depth=10, random_state=0, n_jobs=2)
+    training_data = data_train.reshape(150, n_estimators*n_leafs)
+    test_data = data_test.reshape(150, n_estimators*n_leafs)
+    preds, score, RFC_fit, time_list = fit_and_predict(RFC, training_data, train_labels, test_data, test_labels)
+    plt.subplot(122)
+    sn.heatmap(df_cm, annot=True)
+    plt.savefig('confusion_matrix_ex3.png', bbox_inches='tight', dpi=300)
+    import pdb; pdb.set_trace()
     return
 
 
